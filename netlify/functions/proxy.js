@@ -1,79 +1,48 @@
 const https = require('https');
-const http = require('http');
 
-const GOOGLE_URL = 'https://script.google.com/macros/s/AKfycbyuQsF_B-Yc2MYp42mTuYls2lSJPvoVPZUhV9zxI6ArxE4fdsLB7Jro5h2si095MYc/exec';
+const GOOGLE_URL = 'https://script.google.com/macros/s/AKfycbwA-ho6gv_emtIh-PWwdIgwazf7j21FH6qgdhtbY3lEDn1FFPk9ssSeOI7HHRsdLGgZ/exec';
 
-function fetchUrl(requestUrl, redirectCount, originalParams) {
-  if (redirectCount > 10) return Promise.reject(new Error('Too many redirects'));
-  return new Promise((resolve, reject) => {
-    const lib = requestUrl.startsWith('https') ? https : http;
-    let finalUrl = requestUrl;
-    if (redirectCount > 0 && originalParams && !requestUrl.includes('?')) {
-      finalUrl = `${requestUrl}?${originalParams}`;
-    }
-    const req = lib.get(finalUrl, {
-      headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (compatible; NetlifyFunction/1.0)',
-        'X-Requested-With': 'XMLHttpRequest'
-      }
-    }, (res) => {
+function get(url) {
+  return new Promise(function(resolve, reject) {
+    https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, function(res) {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        const location = res.headers.location;
-        const next = location.startsWith('http') ? location : new URL(location, requestUrl).href;
         res.resume();
-        resolve(fetchUrl(next, redirectCount + 1, originalParams));
+        resolve(get(res.headers.location));
         return;
       }
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => resolve(data));
-    });
-    req.on('error', reject);
-    req.setTimeout(15000, () => { req.destroy(); reject(new Error('Timeout')); });
+      var body = '';
+      res.on('data', function(c) { body += c; });
+      res.on('end', function() { resolve(body); });
+    }).on('error', reject);
   });
 }
 
-exports.handler = async function(event) {
-  try {
-    const params = new URLSearchParams(event.queryStringParameters || {});
-    const paramString = params.toString();
-    const url = `${GOOGLE_URL}?${paramString}`;
-    const data = await fetchUrl(url, 0, paramString);
-    let parsed;
+exports.handler = function(event) {
+  var params = new URLSearchParams(event.queryStringParameters || {});
+  var url = GOOGLE_URL + '?' + params.toString();
+
+  return get(url).then(function(body) {
+    var parsed;
     try {
-      const jsonMatch = data.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        parsed = JSON.parse(jsonMatch[0]);
-      } else {
-        throw new Error('No JSON found');
-      }
+      parsed = JSON.parse(body);
     } catch(e) {
-      if (params.get('player')) {
-        parsed = { status: 'ok' };
-      } else {
-        return {
-          statusCode: 200,
-          headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: 'error', message: 'No JSON in response', raw: data.substring(0, 200) })
-        };
-      }
+      parsed = params.get('player') ? { status: 'ok' } : { status: 'error', raw: body.slice(0, 200) };
     }
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       body: JSON.stringify(parsed)
     };
-  } catch(err) {
+  }).catch(function(err) {
     return {
       statusCode: 500,
-      headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       body: JSON.stringify({ status: 'error', message: err.message })
     };
-  }
+  });
 };
 ```
 
-Click **Commit changes**, wait 30 seconds for Netlify to redeploy, then test this in your browser:
+Click **Commit changes**, wait 30 seconds, then test this in your browser:
 ```
 https://melodic-cranachan-704e44.netlify.app/.netlify/functions/proxy?action=leaderboard
