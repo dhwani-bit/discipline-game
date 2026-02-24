@@ -53,4 +53,27 @@ exports.handler = async function(event) {
         parsed = { status: 'ok' };
       } else {
         return {
-          status
+          statusCode: 200,
+          headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'error', message: 'No JSON in response', raw: data.substring(0, 200) })
+        };
+      }
+    }
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      body: JSON.stringify(parsed)
+    };
+  } catch(err) {
+    return {
+      statusCode: 500,
+      headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'error', message: err.message })
+    };
+  }
+};
+```
+
+Click **Commit changes**, wait 30 seconds for Netlify to redeploy, then test this in your browser:
+```
+https://melodic-cranachan-704e44.netlify.app/.netlify/functions/proxy?action=leaderboard
